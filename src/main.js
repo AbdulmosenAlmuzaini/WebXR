@@ -1,4 +1,5 @@
 /* main.js — نقطة الدخول: Renderer + Loop (مهيأ لـ WebXR لاحقًا) */
+import './styles.css';
 import * as THREE from 'three';
 import { buildClassroom, pulseArrows, tickDetails } from './scene.js';
 import { Player } from './player.js';
