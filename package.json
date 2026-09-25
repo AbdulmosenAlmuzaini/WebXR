@@ -1,0 +1,17 @@
+{
+  "name": "fire-evacuation-sim",
+  "version": "1.0.0",
+  "description": "محاكاة إخلاء حريق داخل فصل دراسي ثلاثي الأبعاد - Three.js + Vite (جاهزة لـ WebXR لاحقًا)",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 5173",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "three": "^0.160.0"
+  },
+  "devDependencies": {
+    "vite": "^5.4.0"
+  }
+}

@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>محاكاة الإخلاء في حالات الحريق</title>
+  <!-- خط Cairo -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="./src/styles.css" />
+</head>
+<body>
+  <canvas id="scene-canvas"></canvas>
+
+  <!-- مؤشر التصويب -->
+  <div id="crosshair" class="hidden">+</div>
+
+  <!-- تلميح علوي -->
+  <div id="hint" class="hidden"></div>
+
+  <!-- شاشة البداية -->
+  <div id="start-screen" class="overlay">
+    <div class="card">
+      <h1>محاكاة الإخلاء في حالات الحريق</h1>
+      <p class="subtitle">استخدم WASD للحركة والماوس للنظر حولك.</p>
+      <ul class="instructions">
+        <li>اضغط <b>ابدأ التجربة</b> ثم انقر للتحكم بالنظر (Pointer Lock)</li>
+        <li>انتظر 5 ثوانٍ داخل الفصل ثم سيبدأ إنذار الحريق</li>
+        <li>عند سماع الإنذار توجه فورًا إلى باب الخروج</li>
+        <li>إذا لم تتحرك لمدة 10 ثوانٍ ستظهر أسهم إرشادية</li>
+      </ul>
+      <button id="start-btn">ابدأ التجربة</button>
+      <p class="note">الأداء: نسخة Desktop — البنية جاهزة لـ WebXR / Meta Quest لاحقًا</p>
+    </div>
+  </div>
+
+  <!-- رسالة النجاح -->
+  <div id="success-screen" class="overlay hidden">
+    <div class="card success">
+      <h1 id="success-title">تم الإخلاء بنجاح</h1>
+      <p>أحسنت، وصلت إلى نقطة الخروج بأمان.</p>
+      <button id="restart-btn">إعادة التجربة</button>
+    </div>
+  </div>
+
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>
