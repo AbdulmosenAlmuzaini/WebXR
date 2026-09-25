@@ -1,7 +1,7 @@
 /* main.js — نقطة الدخول: Renderer + Loop (مهيأ لـ WebXR لاحقًا) */
 import './styles.css';
 import * as THREE from 'three';
-import { buildClassroom, pulseArrows, tickDetails } from './scene.js';
+import { buildClassroom, pulseArrows, tickDetails, getEvacPath } from './scene.js';
 import { Player } from './player.js';
 import { Simulation } from './simulation.js';
 import { UI } from './ui.js';
@@ -20,8 +20,8 @@ renderer.outputColorSpace = THREE.SRGBColorSpace;
 // document.body.appendChild(VRButton.createButton(renderer));
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x1a1d22);
-scene.fog = new THREE.Fog(0x1a1d22, 15, 40);
+scene.background = new THREE.Color(0x87a5c4);
+scene.fog = new THREE.Fog(0x87a5c4, 22, 60); // مدى أطول للمدرسة + الفناء الخارجي
 
 const camera = new THREE.PerspectiveCamera(68, window.innerWidth / window.innerHeight, 0.1, 100);
 
@@ -66,8 +66,9 @@ if (autotest && autotest.startsWith('fast-')) {
     result.frames = i + 1;
     const t = (i + 1) * step;
     if (autotest === 'fast-evacuate' && sim.state === 'alarm') {
-      // سير افتراضي نحو الباب بسرعة 3 م/ث
-      const target = sceneData.exitPos;
+      // سير افتراضي على طول مسار الإخلاء الكامل (فصل → ممر → مخرج نهائي) بسرعة 3 م/ث
+      const path = getEvacPath(player.position);
+      const target = path.length > 1 ? path[1] : sceneData.exitPos;
       const p = player.position;
       const dx = target.x - p.x, dz = target.z - p.z;
       const d = Math.hypot(dx, dz);
@@ -100,16 +101,17 @@ function animate() {
   const elapsed = clock.elapsedTime;
   if (sim.state === 'calm' || sim.state === 'alarm' || sim.state === 'done') {
     if (autotest === 'evacuate' && sim.state === 'alarm' && !autotestTeleported) {
-      // محاكاة سير المستخدم نحو الباب: خطوات نحو المخرج
-      const target = sceneData.exitPos;
+      // محاكاة سير المستخدم على طول مسار الإخلاء: خطوات نحو النقطة التالية
+      const path = getEvacPath(player.position);
+      const target = path.length > 1 ? path[1] : sceneData.exitPos;
       const p = player.position;
       const dir = new THREE.Vector3(target.x - p.x, 0, target.z - p.z);
-      if (dir.length() > 1.2) {
-        dir.normalize().multiplyScalar(3.0 * dt);
-        p.x += dir.x; p.z += dir.z;
-      } else if (!autotestTeleported) {
+      if (player.position.distanceTo(sceneData.exitPos) < 1.2) {
         autotestTeleported = true;
-        p.x = target.x; p.z = target.z - 1.0; // داخل منطقة الخروج
+        p.x = sceneData.exitPos.x; p.z = sceneData.exitPos.z;
+      } else if (dir.length() > 0.05) {
+        dir.normalize().multiplyScalar(Math.min(dir.length(), 3.0 * dt));
+        p.x += dir.x; p.z += dir.z;
       }
     }
     player.update(dt);

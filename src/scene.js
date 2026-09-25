@@ -1,14 +1,32 @@
-/* scene.js — فصل دراسي حديث: ألوان هادئة + تفاصيل + إضاءة متوازنة
+/* scene.js — مدرسة مصغّرة: فصل + ممر + قاعة خروج + فناء خارجي
  * البنية مهيأة لاحقًا لـ WebXR (إضافة VRButton و Teleportation دون تغيير المشهد)
- * ملاحظة: الأبعاد والواجهات (ROOM/EXIT/buildClassroom/layoutArrows/pulseArrows) ثابتة
- * حتى لا يتأثر منطق المحاكاة أو التصادم أو الاختبارات.
+ * مسار الإخلاء: مقعد الطالب → باب الفصل → الممر شرقًا → قاعة الخروج جنوبًا → الفناء الخارجي
+ * خفيف: BoxGeometry + CanvasTexture فقط، بدون موديلات خارجية.
  */
 import * as THREE from 'three';
 
-// أبعاد الغرفة (بالمتر) — ثابتة
+// أبعاد الفصل (بالمتر) — ثابتة (نقطة البداية داخلها)
 export const ROOM = { w: 12, d: 8, h: 3.2, wall: 0.2 };
-// موقع باب الخروج (على الجدار الجنوبي z = +d/2) — ثابت
+// باب الفصل (على الجدار الجنوبي z = +d/2) — مخرج وسيط، لا يُنهي التجربة
 export const EXIT = { x: 0, z: ROOM.d / 2, width: 1.6, height: 2.3 };
+// الممر المدرسي أمام الفصل (يمتد شرقًا وغربًا)
+export const CORRIDOR = { minX: -10, maxX: 10, minZ: 4.2, maxZ: 7.0, h: 3.2 };
+// قاعة الخروج الشرقية (من الممر جنوبًا حتى باب المبنى الرئيسي)
+export const HALL = { minX: 7, maxX: 10, minZ: 7.0, maxZ: 14.0, h: 3.2 };
+// المخرج النهائي للمبنى (باب رئيسي على الجدار الجنوبي للقاعة)
+export const FINAL_EXIT = { x: 8.5, z: 14.0, width: 1.8, height: 2.4 };
+// الفناء الخارجي الآمن (منطقة التجمع)
+export const YARD = { minX: 5, maxX: 12, minZ: 14.2, maxZ: 19.5 };
+
+// خط السير الثابت للإخلاء (يُستخدم لرسم الأسهم واختبارات الحركة)
+export const EVAC_ROUTE = [
+  { x: 0, z: 2.5 },    // الممر الأوسط داخل الفصل
+  { x: 0, z: 4.0 },    // باب الفصل
+  { x: 0, z: 5.6 },    // مدخل الممر
+  { x: 8.5, z: 5.6 },  // التحرك شرقًا في الممر
+  { x: 8.5, z: 13.8 }, // النزول جنوبًا في قاعة الخروج
+  { x: 8.5, z: 16.6 }, // خارج المبنى — منطقة التجمع
+];
 
 export function buildClassroom(scene) {
   const colliders = []; // عوائق AABB على مستوى الأرض: {minX,maxX,minZ,maxZ}
@@ -349,35 +367,228 @@ export function buildClassroom(scene) {
   beacon.position.set(EXIT.x - 0.85, doorH + 0.27, ROOM.d / 2 - 0.1);
   group.add(beacon);
 
-  // ---------- منطقة آمنة خارج الباب: سجادة + إطار مضيء + ملصق أرضي ----------
+  // ---------- عتبة باب الفصل: سجادة صغيرة (ممر فقط — ليست منطقة نجاح) ----------
   {
-    const safe = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 2.6),
+    const mat = new THREE.Mesh(new THREE.PlaneGeometry(2.0, 1.0),
+      new THREE.MeshStandardMaterial({ color: 0xc9c2b2, roughness: 0.9 }));
+    mat.rotation.x = -Math.PI / 2;
+    mat.position.set(EXIT.x, 0.012, ROOM.d / 2 + 0.7);
+    group.add(mat);
+  }
+
+  // =====================================================
+  // المدرسة المصغّرة: ممر + قاعة خروج + مخرج نهائي + فناء
+  // =====================================================
+  const matFloorC = new THREE.MeshStandardMaterial({ color: 0xcfd8dc, roughness: 0.8 });
+  const matFloorH = new THREE.MeshStandardMaterial({ color: 0xd7d3c8, roughness: 0.8 });
+  const matYard = new THREE.MeshStandardMaterial({ color: 0xb9c9ae, roughness: 1 });
+  const matDoorFake = new THREE.MeshStandardMaterial({ color: 0x9db3a8, roughness: 0.6 });
+  const matGlassD = new THREE.MeshStandardMaterial({
+    color: 0xcfe4ef, roughness: 0.1, metalness: 0.2,
+    emissive: 0xbfd9e8, emissiveIntensity: 0.25
+  });
+
+  // أرضيات الممر والقاعة والفناء (خفيفة — مستويات فقط)
+  function addFloor(w, d, mat, x, z, y = 0.005) {
+    const f = new THREE.Mesh(new THREE.PlaneGeometry(w, d), mat);
+    f.rotation.x = -Math.PI / 2;
+    f.position.set(x, y, z);
+    f.receiveShadow = true;
+    group.add(f);
+    return f;
+  }
+  const corrW = CORRIDOR.maxX - CORRIDOR.minX;
+  const corrD = CORRIDOR.maxZ - CORRIDOR.minZ;
+  const corrCx = (CORRIDOR.minX + CORRIDOR.maxX) / 2;
+  const corrCz = (CORRIDOR.minZ + CORRIDOR.maxZ) / 2;
+  addFloor(corrW, corrD, matFloorC, corrCx, corrCz);
+  // شريط أوسط بلون مختلف يقود بصريًا نحو الشرق (طريق الإخلاء)
+  addFloor(corrW, 0.9, new THREE.MeshStandardMaterial({ color: 0xb9c6a8, roughness: 0.85 }), corrCx, corrCz, 0.008);
+  const hallW = HALL.maxX - HALL.minX;
+  const hallD = HALL.maxZ - HALL.minZ;
+  const hallCx = (HALL.minX + HALL.maxX) / 2;
+  const hallCz = (HALL.minZ + HALL.maxZ) / 2;
+  addFloor(hallW, hallD, matFloorH, hallCx, hallCz);
+  const yardW = YARD.maxX - YARD.minX;
+  const yardD = YARD.maxZ - YARD.minZ;
+  addFloor(yardW, yardD, matYard, (YARD.minX + YARD.maxX) / 2, (YARD.minZ + YARD.maxZ) / 2, 0.004);
+
+  // أسقف الممر والقاعة (نفس ارتفاع الفصل)
+  const Hc = CORRIDOR.h;
+  function addCeil(w, d, x, z) {
+    const c = new THREE.Mesh(new THREE.PlaneGeometry(w, d), matCeil);
+    c.rotation.x = Math.PI / 2;
+    c.position.set(x, Hc, z);
+    group.add(c);
+  }
+  addCeil(corrW, corrD, corrCx, corrCz);
+  addCeil(hallW, hallD, hallCx, hallCz);
+
+  const WT = 0.2; // سماكة الجدران
+  // جدران الممر الشمالية (امتداد لجدار الفصل الجنوبي، مع فجوة باب الفصل فقط)
+  addBox((CORRIDOR.minX * -1 - ROOM.w / 2) + 0, Hc, WT, matWall, (CORRIDOR.minX + -ROOM.w / 2) / 2, Hc / 2, CORRIDOR.minZ - WT / 2);
+  addBox((CORRIDOR.maxX - ROOM.w / 2), Hc, WT, matWall, (ROOM.w / 2 + CORRIDOR.maxX) / 2, Hc / 2, CORRIDOR.minZ - WT / 2);
+  // الجدار الجنوبي للممر (مع فتحة دخول قاعة الخروج عند x ∈ [7,10])
+  addBox((HALL.minX - CORRIDOR.minX), Hc, WT, matWall, (CORRIDOR.minX + HALL.minX) / 2, Hc / 2, CORRIDOR.maxZ + WT / 2);
+  // نهايتا الممر غربًا وشرقًا
+  addBox(WT, Hc, corrD + WT, matWall, CORRIDOR.minX - WT / 2, Hc / 2, corrCz);
+  addBox(WT, Hc, corrD + WT, matWall, CORRIDOR.maxX + WT / 2, Hc / 2, corrCz);
+  // جدران قاعة الخروج (غربي + شرقي)
+  addBox(WT, Hc, hallD, matWall, HALL.minX - WT / 2, Hc / 2, hallCz);
+  addBox(WT, Hc, hallD, matWall, HALL.maxX + WT / 2, Hc / 2, hallCz);
+  // الجدار الجنوبي للقاعة (باب المبنى الرئيسي في المنتصف)
+  {
+    const fw = FINAL_EXIT.width;
+    const segL = (FINAL_EXIT.x - fw / 2) - (HALL.minX - WT / 2);
+    const segR = (HALL.maxX + WT / 2) - (FINAL_EXIT.x + fw / 2);
+    addBox(segL, Hc, WT, matWall, (HALL.minX - WT / 2 + FINAL_EXIT.x - fw / 2) / 2, Hc / 2, HALL.maxZ + WT / 2);
+    addBox(segR, Hc, WT, matWall, (FINAL_EXIT.x + fw / 2 + HALL.maxX + WT / 2) / 2, Hc / 2, HALL.maxZ + WT / 2);
+    addBox(fw, Hc - FINAL_EXIT.height, WT, matWall, FINAL_EXIT.x, FINAL_EXIT.height + (Hc - FINAL_EXIT.height) / 2, HALL.maxZ + WT / 2);
+  }
+  // سياج الفناء الخارجي (منخفض حتى تبقى السماء مرئية)
+  {
+    const fy = 1.1;
+    addBox(0.15, fy, yardD, matWall, YARD.minX - 0.07, fy / 2, (YARD.minZ + YARD.maxZ) / 2);
+    addBox(0.15, fy, yardD, matWall, YARD.maxX + 0.07, fy / 2, (YARD.minZ + YARD.maxZ) / 2);
+    addBox(yardW + 0.3, fy, 0.15, matWall, (YARD.minX + YARD.maxX) / 2, fy / 2, YARD.maxZ + 0.07);
+  }
+
+  // أبواب فصول أخرى (ديكورية — مغلقة على امتداد الممر)
+  function fakeDoor(x, z, ry) {
+    const g = new THREE.Group();
+    const slab = new THREE.Mesh(new THREE.BoxGeometry(1.1, 2.2, 0.08), matDoorFake);
+    slab.position.y = 1.1;
+    g.add(slab);
+    const win = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.5, 0.1), matGlassD);
+    win.position.set(-0.25, 1.5, 0);
+    g.add(win);
+    const plate = new THREE.Mesh(new THREE.PlaneGeometry(0.85, 0.22),
+      new THREE.MeshStandardMaterial({ map: makeLabelTexture('فصل • CLASS', '#5a6d80'), roughness: 0.9 }));
+    plate.position.set(0, 2.45, 0.06);
+    g.add(plate);
+    g.position.set(x, 0, z);
+    g.rotation.y = ry;
+    group.add(g);
+  }
+  fakeDoor(-7.5, CORRIDOR.minZ - 0.05, Math.PI); // على الجدار الشمالي للممر
+  fakeDoor(4.5, CORRIDOR.minZ - 0.05, Math.PI);
+  fakeDoor(HALL.minX - 0.05, 10.0, Math.PI / 2); // على جدار القاعة الغربي
+
+  // لافتات إرشادية في الممر والقاعة
+  function wallSign(text, bg, w, h, x, y, z, ry) {
+    const s = new THREE.Mesh(new THREE.PlaneGeometry(w, h),
+      new THREE.MeshBasicMaterial({ map: makeLabelTexture(text, bg) }));
+    s.position.set(x, y, z);
+    s.rotation.y = ry;
+    group.add(s);
+    return s;
+  }
+  // لافتة EXIT مضيئة فوق باب الفصل من جهة الممر
+  const exitSignCorr = new THREE.Mesh(
+    new THREE.BoxGeometry(1.15, 0.36, 0.09),
+    new THREE.MeshStandardMaterial({
+      map: makeExitTexture(), emissive: 0xffffff, emissiveMap: makeExitTexture(),
+      emissiveIntensity: 0.55, roughness: 0.4
+    })
+  );
+  exitSignCorr.position.set(EXIT.x, doorH + 0.32, ROOM.d / 2 + 0.28);
+  exitSignCorr.rotation.y = Math.PI;
+  group.add(exitSignCorr);
+  wallSign('مخرج →', '#0b5c2c', 1.3, 0.34, 3.4, 2.3, CORRIDOR.maxZ - 0.09, Math.PI);
+  wallSign('طريق الإخلاء', '#1f6f8b', 1.5, 0.36, -4.0, 2.3, CORRIDOR.maxZ - 0.09, Math.PI);
+  wallSign('مخرج EXIT', '#0b5c2c', 1.4, 0.36, HALL.minX + 0.11, 2.3, 10.5, Math.PI / 2);
+  // لافتة المخرج النهائي المضيئة فوق باب المبنى (من الداخل والخارج)
+  const finalSignIn = new THREE.Mesh(
+    new THREE.BoxGeometry(1.3, 0.4, 0.1),
+    new THREE.MeshStandardMaterial({
+      map: makeExitTexture(), emissive: 0xffffff, emissiveMap: makeExitTexture(),
+      emissiveIntensity: 0.6, roughness: 0.4
+    })
+  );
+  finalSignIn.position.set(FINAL_EXIT.x, FINAL_EXIT.height + 0.35, HALL.maxZ - 0.1);
+  finalSignIn.rotation.y = Math.PI;
+  group.add(finalSignIn);
+  const finalSignOut = finalSignIn.clone();
+  finalSignOut.position.set(FINAL_EXIT.x, FINAL_EXIT.height + 0.35, HALL.maxZ + 0.32);
+  finalSignOut.rotation.y = 0;
+  group.add(finalSignOut);
+
+  // باب المبنى الرئيسي النهائي (درفتان زجاجيتان مفتوحتان)
+  {
+    const matFrameD = new THREE.MeshStandardMaterial({ color: 0x4a5257, roughness: 0.4, metalness: 0.6 });
+    const fw = FINAL_EXIT.width, fh = FINAL_EXIT.height;
+    addBox(0.12, fh, 0.3, matFrameD, FINAL_EXIT.x - fw / 2, fh / 2, HALL.maxZ + 0.1);
+    addBox(0.12, fh, 0.3, matFrameD, FINAL_EXIT.x + fw / 2, fh / 2, HALL.maxZ + 0.1);
+    addBox(fw + 0.24, 0.12, 0.3, matFrameD, FINAL_EXIT.x, fh + 0.06, HALL.maxZ + 0.1);
+    for (const sx of [-1, 1]) {
+      const leaf = new THREE.Group();
+      const slab = new THREE.Mesh(new THREE.BoxGeometry(fw / 2 - 0.08, fh - 0.1, 0.06),
+        new THREE.MeshStandardMaterial({ color: 0x7fb3c8, roughness: 0.15, metalness: 0.3, transparent: true, opacity: 0.85 }));
+      leaf.add(slab);
+      leaf.position.set(FINAL_EXIT.x + sx * fw / 2, fh / 2, HALL.maxZ + 0.35);
+      leaf.rotation.y = sx * Math.PI / 2.6;
+      group.add(leaf);
+    }
+    addBox(fw, 0.03, 0.4, matSteel, FINAL_EXIT.x, 0.015, HALL.maxZ + 0.1); // عتبة
+  }
+
+  // طفاية حريق + جرس إنذار في الممر (بجانب قاعة الخروج)
+  {
+    const fx = 6.2, fz = CORRIDOR.maxZ - 0.2;
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.085, 0.085, 0.48, 20),
+      new THREE.MeshStandardMaterial({ color: 0xc0272d, roughness: 0.35, metalness: 0.2 }));
+    body.position.set(fx, 0.95, fz);
+    body.castShadow = true;
+    group.add(body);
+    addBox(0.05, 0.06, 0.05, matSteel, fx, 1.22, fz);
+    const sign = new THREE.Mesh(new THREE.PlaneGeometry(0.42, 0.16),
+      new THREE.MeshBasicMaterial({ map: makeLabelTexture('طفاية حريق', '#c0272d') }));
+    sign.position.set(fx, 1.55, fz + 0.11);
+    group.add(sign);
+  }
+
+  // منطقة التجمع الآمنة في الفناء الخارجي
+  {
+    const safe = new THREE.Mesh(new THREE.PlaneGeometry(3.4, 3.0),
       new THREE.MeshStandardMaterial({ color: 0xa9d6b8, roughness: 0.9 }));
     safe.rotation.x = -Math.PI / 2;
-    safe.position.set(EXIT.x, 0.012, ROOM.d / 2 + 1.5);
+    safe.position.set(FINAL_EXIT.x, 0.012, FINAL_EXIT.z + 2.6);
     group.add(safe);
     const edgeMat = new THREE.MeshBasicMaterial({ color: 0x2fa36b });
-    const e1 = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.02, 0.08), edgeMat);
-    e1.position.set(EXIT.x, 0.02, ROOM.d / 2 + 0.24);
-    const e2 = e1.clone(); e2.position.z = ROOM.d / 2 + 2.76;
-    const e3 = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.02, 2.6), edgeMat);
-    e3.position.set(EXIT.x - 1.26, 0.02, ROOM.d / 2 + 1.5);
-    const e4 = e3.clone(); e4.position.x = EXIT.x + 1.26;
-    group.add(e1, e2, e3, e4);
-    const decal = new THREE.Mesh(new THREE.PlaneGeometry(1.7, 0.55),
+    const mkEdge = (w, d, x, z) => {
+      const e = new THREE.Mesh(new THREE.BoxGeometry(w, 0.02, d), edgeMat);
+      e.position.set(x, 0.02, z);
+      group.add(e);
+    };
+    mkEdge(3.4, 0.08, FINAL_EXIT.x, FINAL_EXIT.z + 1.14);
+    mkEdge(3.4, 0.08, FINAL_EXIT.x, FINAL_EXIT.z + 4.06);
+    mkEdge(0.08, 3.0, FINAL_EXIT.x - 1.66, FINAL_EXIT.z + 2.6);
+    mkEdge(0.08, 3.0, FINAL_EXIT.x + 1.66, FINAL_EXIT.z + 2.6);
+    const decal = new THREE.Mesh(new THREE.PlaneGeometry(2.2, 0.6),
       new THREE.MeshBasicMaterial({ map: makeLabelTexture('منطقة آمنة • SAFE', '#1e7a4c'), transparent: true }));
     decal.rotation.x = -Math.PI / 2;
-    decal.position.set(EXIT.x, 0.025, ROOM.d / 2 + 1.5);
+    decal.position.set(FINAL_EXIT.x, 0.025, FINAL_EXIT.z + 2.6);
     group.add(decal);
-    // خلفية خارجية مضيئة (حتى لا يظهر فراغ أسود عبر الباب)
-    const matOut = new THREE.MeshStandardMaterial({
-      color: 0xdfe8dd, roughness: 0.9, emissive: 0x8fae9c, emissiveIntensity: 0.3
-    });
-    addBox(5.5, 3, 0.2, matOut, EXIT.x, 1.5, ROOM.d / 2 + 3.2);
-    const outLight = new THREE.PointLight(0xe2ffe9, 5, 7, 1.7);
-    outLight.position.set(EXIT.x, 2.3, ROOM.d / 2 + 1.8);
+    const outLight = new THREE.PointLight(0xe2ffe9, 6, 9, 1.7);
+    outLight.position.set(FINAL_EXIT.x, 2.5, FINAL_EXIT.z + 2.6);
     scene.add(outLight);
   }
+
+  // عوائق التصادم للجدران الجديدة (AABB على مستوى الأرض)
+  colliders.push({ minX: -10, maxX: -6, minZ: 3.9, maxZ: 4.3 });
+  colliders.push({ minX: 6, maxX: 10, minZ: 3.9, maxZ: 4.3 });
+  colliders.push({ minX: -6, maxX: -0.8, minZ: 3.9, maxZ: 4.3 });
+  colliders.push({ minX: 0.8, maxX: 6, minZ: 3.9, maxZ: 4.3 });
+  colliders.push({ minX: -10, maxX: 7, minZ: 6.9, maxZ: 7.3 });
+  colliders.push({ minX: -10.2, maxX: -10, minZ: 4.0, maxZ: 7.2 });
+  colliders.push({ minX: 10, maxX: 10.2, minZ: 4.0, maxZ: 7.2 });
+  colliders.push({ minX: 6.8, maxX: 7.0, minZ: 7.0, maxZ: 14.2 });
+  colliders.push({ minX: 10, maxX: 10.2, minZ: 7.0, maxZ: 14.2 });
+  colliders.push({ minX: 6.8, maxX: 7.6, minZ: 13.9, maxZ: 14.3 });
+  colliders.push({ minX: 9.4, maxX: 10.2, minZ: 13.9, maxZ: 14.3 });
+  colliders.push({ minX: -6.2, maxX: -6, minZ: -4.2, maxZ: 4.2 });
+  colliders.push({ minX: 6, maxX: 6.2, minZ: -4.2, maxZ: 4.2 });
+  colliders.push({ minX: -6.2, maxX: 6.2, minZ: -4.4, maxZ: -4.0 });
 
   // ---------- إضاءة متوازنة ومريحة ----------
   scene.add(new THREE.HemisphereLight(0xffffff, 0x9a917e, 0.55));
@@ -396,7 +607,7 @@ export function buildClassroom(scene) {
   sun.shadow.bias = -0.0004;
   scene.add(sun, sun.target);
 
-  // إضاءة سقف دافئة (4 نقاط، بدون ظلال)
+  // إضاءة سقف دافئة: الفصل (4 نقاط) + الممر (3) + القاعة (2) — بدون ظلال
   const warmLights = [];
   for (const [lx, lz] of [[-2.5, -1.8], [2.5, -1.8], [-2.5, 1.8], [2.5, 1.8]]) {
     const p = new THREE.PointLight(0xffe9c4, 9, 11, 1.8);
@@ -404,10 +615,22 @@ export function buildClassroom(scene) {
     scene.add(p);
     warmLights.push(p);
   }
+  for (const [lx, lz] of [[-5, 5.6], [0, 5.6], [5, 5.6]]) {
+    const p = new THREE.PointLight(0xfff1d6, 8, 10, 1.8);
+    p.position.set(lx, Hc - 0.4, lz);
+    scene.add(p);
+    warmLights.push(p);
+  }
+  for (const [lx, lz] of [[8.5, 9.5], [8.5, 12.5]]) {
+    const p = new THREE.PointLight(0xfff1d6, 8, 10, 1.8);
+    p.position.set(lx, Hc - 0.4, lz);
+    scene.add(p);
+    warmLights.push(p);
+  }
 
   // إضاءة تحذيرية حمراء خفيفة (مطفأة افتراضيًا — تُدار من simulation.js)
   const warningLights = [];
-  for (const [lx, lz] of [[-2.5, 0.6], [2.5, 0.6]]) {
+  for (const [lx, lz] of [[-2.5, 0.6], [2.5, 0.6], [0, 5.6], [8.5, 10.5]]) {
     const p = new THREE.PointLight(0xff2a1a, 0, 9, 1.7);
     p.position.set(lx, 2.1, lz); // منخفضة عن السقف حتى لا تُشبع السقف بالأحمر
     scene.add(p);
@@ -429,23 +652,30 @@ export function buildClassroom(scene) {
   arrowsGroup.visible = false;
   scene.add(arrowsGroup);
 
-  // صندوق الـ Trigger عند الباب — ثابت كما هو
+  // صندوق الـ Trigger النهائي: عند المخرج الخارجي للمبنى فقط (النجاح هنا فقط)
   const triggerBox = new THREE.Box3(
-    new THREE.Vector3(EXIT.x - 1.1, 0, EXIT.z - 1.8),
-    new THREE.Vector3(EXIT.x + 1.1, 2.5, EXIT.z + 0.2)
+    new THREE.Vector3(FINAL_EXIT.x - 1.2, 0, FINAL_EXIT.z + 0.1),
+    new THREE.Vector3(FINAL_EXIT.x + 1.2, 2.5, FINAL_EXIT.z + 2.2)
   );
   const triggerHelper = new THREE.Mesh(
-    new THREE.BoxGeometry(2.2, 0.06, 2.0),
+    new THREE.BoxGeometry(2.4, 0.06, 2.1),
     new THREE.MeshBasicMaterial({ color: 0x00ff88, transparent: true, opacity: 0.14 })
   );
-  triggerHelper.position.set(EXIT.x, 0.03, EXIT.z - 0.9);
+  triggerHelper.position.set(FINAL_EXIT.x, 0.03, FINAL_EXIT.z + 1.15);
   triggerHelper.visible = false; // مساعد تصحيح فقط — مخفي في التجربة
   scene.add(triggerHelper);
 
+  // Trigger وسيط عند باب الفصل: لتحديث الحالة فقط (لا يُنهي التجربة)
+  const classDoorBox = new THREE.Box3(
+    new THREE.Vector3(EXIT.x - 1.1, 0, EXIT.z - 1.6),
+    new THREE.Vector3(EXIT.x + 1.1, 2.5, EXIT.z + 0.6)
+  );
+
   return {
-    group, colliders, arrowsGroup, triggerBox, triggerHelper,
+    group, colliders, arrowsGroup, triggerBox, triggerHelper, classDoorBox,
     lights: { ambient, warmLights, warningLights, exitLight, lampMeshes, beaconLight, beaconMat, sun },
-    exitPos: new THREE.Vector3(EXIT.x, 0, EXIT.z),
+    exitPos: new THREE.Vector3(FINAL_EXIT.x, 0, FINAL_EXIT.z + 2.6),
+    classExitPos: new THREE.Vector3(EXIT.x, 0, EXIT.z),
     details
   };
 }
@@ -502,33 +732,70 @@ function addModernDesk(group, x, z, matTop, matEdge, matLeg, matSeat) {
   group.add(desk);
 }
 
-// ---- أسهم شيفرون أنيقة على الأرض فقط: صغيرة، متباعدة، خضراء هادئة ----
-export function layoutArrows(arrowsGroup, fromPos, toPos) {
+// ---- مسار الإخلاء الكامل: من موقع اللاعب عبر باب الفصل والممر حتى الفناء ----
+// يبني قائمة نقاط تبدأ من موقع اللاعب الحالي ثم أقرب نقطة أمامية في EVAC_ROUTE
+export function getEvacPath(fromPos) {
+  const pts = EVAC_ROUTE.map((p) => new THREE.Vector3(p.x, 0, p.z));
+  // أقرب نقطة في المسار لموقع اللاعب
+  let best = 0, bestD = Infinity;
+  pts.forEach((p, i) => {
+    const d = (p.x - fromPos.x) ** 2 + (p.z - fromPos.z) ** 2;
+    if (d < bestD) { bestD = d; best = i; }
+  });
+  // إذا كان اللاعب قد تجاوز النقطة الأقرب فعليًا، ابدأ من التي بعدها
+  let startIdx = best;
+  if (best < pts.length - 1) {
+    const a = pts[best], b = pts[best + 1];
+    const abx = b.x - a.x, abz = b.z - a.z;
+    const apx = fromPos.x - a.x, apz = fromPos.z - a.z;
+    const t = (apx * abx + apz * abz) / Math.max(1e-6, abx * abx + abz * abz);
+    if (t > 0.9) startIdx = best + 1;
+  }
+  return [new THREE.Vector3(fromPos.x, 0, fromPos.z), ...pts.slice(startIdx)];
+}
+
+// ---- أسهم شيفرون على الأرض بطول المسار الكامل (الفصل → الممر → المخرج النهائي) ----
+export function layoutArrows(arrowsGroup, fromPos, _toPos) {
   while (arrowsGroup.children.length) {
     const ch = arrowsGroup.children.pop();
-    ch.traverse?.((o) => { o.geometry?.dispose?.(); o.material?.dispose?.(); });
+    ch.traverse?.((o) => { if (o !== ch) { o.geometry?.dispose?.(); o.material?.dispose?.(); } });
+    ch.geometry?.dispose?.(); ch.material?.dispose?.();
   }
-  const dir = new THREE.Vector3().subVectors(toPos, fromPos);
-  dir.y = 0;
-  const dist = dir.length();
-  dir.normalize();
-  const angle = Math.atan2(dir.x, dir.z);
-  // تباعد منتظم ~1.5م، من 3 إلى 6 أسهم
-  const count = Math.max(3, Math.min(6, Math.floor(dist / 1.5)));
-  const startD = 1.3;
-  const endD = Math.max(startD + 0.6, dist - 1.1);
+  const path = getEvacPath(fromPos);
+  // أطوال المقاطع
+  const segLens = [];
+  let total = 0;
+  for (let i = 0; i < path.length - 1; i++) {
+    const dx = path[i + 1].x - path[i].x, dz = path[i + 1].z - path[i].z;
+    const L = Math.hypot(dx, dz);
+    segLens.push(L);
+    total += L;
+  }
+  if (total < 0.5) { arrowsGroup.visible = false; return; }
+  const SPACING = 1.4;
+  const count = Math.max(4, Math.min(18, Math.floor(total / SPACING)));
   const geo = makeChevronGeometry(); // هندسة مشتركة
+  let order = 0;
   for (let i = 0; i < count; i++) {
     const t = count === 1 ? 0.5 : i / (count - 1);
-    const d = startD + (endD - startD) * t;
+    let d = 1.0 + t * Math.max(0.5, total - 2.2); // من بعد اللاعب بقليل حتى قبل النهاية
+    // حدد المقطع الذي تقع فيه المسافة d
+    let acc = 0, si = 0;
+    while (si < segLens.length - 1 && acc + segLens[si] < d) { acc += segLens[si]; si++; }
+    const a = path[si], b = path[si + 1];
+    const L = Math.max(1e-6, segLens[si]);
+    const f = Math.min(1, Math.max(0, (d - acc) / L));
+    const px = a.x + (b.x - a.x) * f;
+    const pz = a.z + (b.z - a.z) * f;
+    const angle = Math.atan2(b.x - a.x, b.z - a.z);
     const mat = new THREE.MeshBasicMaterial({
       color: 0x2fb872, transparent: true, opacity: 0.8, depthWrite: false
     });
     const arrow = new THREE.Mesh(geo, mat);
     arrow.rotation.x = -Math.PI / 2; // الاستلقاء على الأرض
-    arrow.rotation.z = angle + Math.PI; // التوجيه نحو الباب (الشيفرون مرسوم للأعلى +Y)
-    arrow.position.set(fromPos.x + dir.x * d, 0.025, fromPos.z + dir.z * d);
-    arrow.userData.order = i;
+    arrow.rotation.z = angle + Math.PI; // الشيفرون مرسوم للأعلى +Y
+    arrow.position.set(px, 0.025, pz);
+    arrow.userData.order = order++;
     arrowsGroup.add(arrow);
   }
   arrowsGroup.visible = true;

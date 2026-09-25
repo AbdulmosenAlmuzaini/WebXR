@@ -1,4 +1,4 @@
-/* simulation.js — تسلسل المحاكاة: هدوء 5s → إنذار + إضاءة حمراء → مراقبة خمول 10s → أسهم → خروج */
+/* simulation.js — تسلسل المحاكاة: هدوء 5s → إنذار → خمول 10s → أسهم للمخرج النهائي → نجاح */
 import * as THREE from 'three';
 import { layoutArrows } from './scene.js';
 
@@ -18,6 +18,7 @@ export class Simulation {
     this.inactivityTimer = 0;
     this.lastPos = new THREE.Vector3();
     this.arrowsShown = false;
+    this.classExited = false; // خرج من الفصل إلى الممر (وسيط — لا يُنهي التجربة)
     this.audio = null;
     this.audioOk = false;
     this.oscFallback = null; // مولد صوت بديل إذا غاب ملف mp3
@@ -33,6 +34,7 @@ export class Simulation {
     this.alarmBlend = 0;
     this.inactivityTimer = 0;
     this.arrowsShown = false;
+    this.classExited = false;
     this.lastPos.copy(this.player.position);
     this.ui.showHint('أنت داخل الفصل… انتظر', 5000);
     console.log('[sim] بدأت التجربة: هدوء لمدة 5 ثوانٍ');
@@ -125,24 +127,32 @@ export class Simulation {
     this.lastPos.copy(this.player.position);
     console.log('[sim] بدأ إنذار الحريق!');
     this.ensureAudio();
-    this.ui.showHint('إنذار حريق! توجه فورًا إلى باب الخروج', 5000);
+    this.ui.showHint('إنذار حريق! اخرج من الفصل واتبع اللافتات حتى مخرج المدرسة', 5000);
   }
 
   showArrows() {
     this.arrowsShown = true;
-    this.setAlarmVolume(0.5); // خفض الصوت إلى 50%
+    this.setAlarmVolume(0.5); // خفض الصوت إلى 50% مع استمراره
     layoutArrows(this.sceneData.arrowsGroup, this.player.position, this.sceneData.exitPos);
-    this.ui.showHint('اتبع الأسهم الخضراء نحو باب الخروج', 6000);
-    console.log('[sim] المستخدم لم يتحرك 10 ثوانٍ: خفض الصوت 50% + إظهار الأسهم');
+    this.ui.showHint('اتبع الأسهم الخضراء عبر الممر حتى مخرج المدرسة الرئيسي', 6000);
+    console.log('[sim] المستخدم لم يتحرك 10 ثوانٍ: خفض الصوت 50% + إظهار أسهم حتى خارج المدرسة');
+  }
+
+  // اللاعب عبر باب الفصل إلى الممر — تحديث حالة فقط، الإنذار يستمر
+  markClassExit() {
+    if (this.classExited) return;
+    this.classExited = true;
+    this.ui.showHint('خرجت من الفصل — واصل عبر الممر شرقًا ثم جنوبًا إلى المخرج الرئيسي', 5000);
+    console.log('[sim] اللاعب خرج من الفصل إلى الممر — الإنذار مستمر حتى المخرج النهائي');
   }
 
   evacuate() {
     if (this.state === 'done') return;
     this.state = 'done';
-    this.stopAlarmSound(); // إيقاف إنذار الحريق فورًا عند الوصول للباب
+    this.stopAlarmSound(); // إيقاف إنذار الحريق فورًا عند المخرج النهائي فقط
     this.playSuccessSound(); // صوت نجاح هادئ مرة واحدة (بدون Loop)
     this.sceneData.arrowsGroup.visible = false;
-    console.log('[sim] تم الإخلاء بنجاح');
+    console.log('[sim] تم الإخلاء بنجاح — خرج من مبنى المدرسة');
     this.ui.showSuccess();
   }
 
@@ -228,8 +238,12 @@ export class Simulation {
       }
       if (!this.arrowsShown && this.inactivityTimer >= 10) this.showArrows();
 
-      // كشف الوصول إلى منطقة الخروج
+      // Trigger وسيط: باب الفصل — تحديث حالة فقط (لا نجاح هنا)
       const p = this.player.position;
+      const atDoor = this.sceneData.classDoorBox?.containsPoint(new THREE.Vector3(p.x, 1, p.z));
+      if (atDoor && !this.classExited && this.alarmTime > 1) this.markClassExit();
+
+      // كشف الوصول إلى المخرج النهائي خارج المبنى — النجاح هنا فقط
       if (this.sceneData.triggerBox.containsPoint(new THREE.Vector3(p.x, 1, p.z))) {
         this.evacuate();
       }

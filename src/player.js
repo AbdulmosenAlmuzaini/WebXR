@@ -1,6 +1,8 @@
-/* player.js — كاميرا منظور أول + WASD + Pointer Lock + تصادم */
+/* player.js — كاميرا منظور أول + WASD + Pointer Lock + تصادم (مدرسة مصغّرة) */
 import * as THREE from 'three';
-import { ROOM } from './scene.js';
+
+// الحدود الخارجية الصلبة للمدرسة كاملة (الفصل + الممر + القاعة + الفناء)
+const SCHOOL_BOUNDS = { minX: -9.6, maxX: 11.6, minZ: -3.6, maxZ: 19.1 };
 
 export class Player {
   constructor(camera, domElement, colliders) {
@@ -77,31 +79,31 @@ export class Player {
   }
 
   resolveCollision(p) {
-    // 1) جدران الغرفة (ارتداد داخلي مع هامش نصف القطر)
-    const mx = ROOM.w / 2 - this.radius - 0.05;
-    const mz = ROOM.d / 2 - this.radius - 0.05;
-    p.x = Math.max(-mx, Math.min(mx, p.x));
-    p.z = Math.max(-mz, Math.min(mz, p.z));
-    // 2) الطاولات/الكراسي: دفع الدائرة خارج الصندوق
-    for (const c of this.colliders) {
-      const nx = Math.max(c.minX, Math.min(c.maxX, p.x));
-      const nz = Math.max(c.minZ, Math.min(c.maxZ, p.z));
-      const dx = p.x - nx, dz = p.z - nz;
-      const d2 = dx * dx + dz * dz;
-      if (d2 < this.radius * this.radius) {
-        if (d2 > 1e-8) {
-          const d = Math.sqrt(d2);
-          p.x = nx + (dx / d) * this.radius;
-          p.z = nz + (dz / d) * this.radius;
-        } else {
-          // المركز داخل الصندوق: ادفعه من أقرب حافة
-          const pushL = p.x - c.minX, pushR = c.maxX - p.x;
-          const pushB = p.z - c.minZ, pushF = c.maxZ - p.z;
-          const m = Math.min(pushL, pushR, pushB, pushF);
-          if (m === pushL) p.x = c.minX - this.radius;
-          else if (m === pushR) p.x = c.maxX + this.radius;
-          else if (m === pushB) p.z = c.minZ - this.radius;
-          else p.z = c.maxZ + this.radius;
+    // 1) الحدود الخارجية للمدرسة (ارتداد داخلي مع هامش نصف القطر)
+    p.x = Math.max(SCHOOL_BOUNDS.minX + this.radius, Math.min(SCHOOL_BOUNDS.maxX - this.radius, p.x));
+    p.z = Math.max(SCHOOL_BOUNDS.minZ + this.radius, Math.min(SCHOOL_BOUNDS.maxZ - this.radius, p.z));
+    // 2) الطاولات + الجدران (AABB): دفع الدائرة خارج الصندوق — عدة تمريرات للزوايا
+    for (let pass = 0; pass < 2; pass++) {
+      for (const c of this.colliders) {
+        const nx = Math.max(c.minX, Math.min(c.maxX, p.x));
+        const nz = Math.max(c.minZ, Math.min(c.maxZ, p.z));
+        const dx = p.x - nx, dz = p.z - nz;
+        const d2 = dx * dx + dz * dz;
+        if (d2 < this.radius * this.radius) {
+          if (d2 > 1e-8) {
+            const d = Math.sqrt(d2);
+            p.x = nx + (dx / d) * this.radius;
+            p.z = nz + (dz / d) * this.radius;
+          } else {
+            // المركز داخل الصندوق: ادفعه من أقرب حافة
+            const pushL = p.x - c.minX, pushR = c.maxX - p.x;
+            const pushB = p.z - c.minZ, pushF = c.maxZ - p.z;
+            const m = Math.min(pushL, pushR, pushB, pushF);
+            if (m === pushL) p.x = c.minX - this.radius;
+            else if (m === pushR) p.x = c.maxX + this.radius;
+            else if (m === pushB) p.z = c.minZ - this.radius;
+            else p.z = c.maxZ + this.radius;
+          }
         }
       }
     }
