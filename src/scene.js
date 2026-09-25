@@ -213,6 +213,35 @@ export function buildClassroom(scene) {
     }
   }
 
+  // ---------- لوحة مدرسية + قواعد الفصل على الجدار الجنوبي (بجانب الباب) ----------
+  // مستويات خفيفة فقط — تُرى لحظة التوجه للخروج وتعزز إحساس المدرسة
+  {
+    const plaque = new THREE.Mesh(new THREE.PlaneGeometry(1.7, 0.42),
+      new THREE.MeshStandardMaterial({ map: makeLabelTexture('مدرسة المستقبل • فصل 3-ب', '#1f6f8b'), roughness: 0.9 }));
+    plaque.rotation.y = Math.PI; // نحو داخل الفصل
+    plaque.position.set(2.9, 2.0, ROOM.d / 2 - 0.015);
+    group.add(plaque);
+    const rules = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 1.2),
+      new THREE.MeshStandardMaterial({ map: makePosterTexture('قواعد الفصل', 'الهدوء وقت الطوارئ', '#3f6b3a', '#f2f8f0'), roughness: 0.9 }));
+    rules.rotation.y = Math.PI;
+    rules.position.set(-3.0, 1.8, ROOM.d / 2 - 0.015);
+    group.add(rules);
+  }
+
+  // ---------- حقائب مدرسية بسيطة تحت بعض الطاولات (بصري فقط) ----------
+  // داخل بصمة تصادم الطاولات الحالية — لا عوائق جديدة ولا تأثير على المسار
+  {
+    const packCols = [0xb03a48, 0x2f6db0, 0x3f8e5a];
+    const packSpots = [[-3.6, -1.9], [-2.0, 1.1], [3.6, -0.4]];
+    packSpots.forEach(([px, pz], i) => {
+      const pack = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.42, 0.2),
+        new THREE.MeshStandardMaterial({ color: packCols[i % 3], roughness: 0.85 }));
+      pack.position.set(px - 0.3, 0.21, pz - 0.1);
+      pack.rotation.y = 0.15 * (i - 1);
+      group.add(pack);
+    });
+  }
+
   // ---------- مصابيح سقف LED (6 ألواح) ----------
   const lampMeshes = [];
   const panelFrame = new THREE.MeshStandardMaterial({ color: 0xe8e8e6, roughness: 0.5 });
@@ -461,7 +490,7 @@ function addModernDesk(group, x, z, matTop, matEdge, matLeg, matSeat) {
     chair.add(leg);
   }
   chair.position.set(0.05, 0, 1.05);
-  chair.rotation.y = (Math.random() - 0.5) * 0.25; // لمسة واقعية
+  chair.rotation.y = 0; // ثابتة نحو الطاولة (وضعية جلوس نظامية)
   desk.add(chair);
   // كتاب على الطاولة
   const book = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.04, 0.2),

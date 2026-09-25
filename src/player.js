@@ -8,17 +8,18 @@ export class Player {
     this.dom = domElement;
     this.colliders = colliders;
 
-    this.yaw = Math.PI; // البداية: النظر نحو باب الخروج (+Z)
+    this.yaw = 0; // البداية: جلوس والنظر نحو السبورة/مقدمة الفصل (-Z)
     this.pitch = 0;
     this.keys = {};
     this.locked = false;
-    this.eyeHeight = 1.6;
+    this.eyeHeight = 1.2; // ارتفاع الكاميرا لوضعية الجلوس خلف الطاولة (1.15–1.25م)
     this.radius = 0.35;
     this.speed = 3.0;
 
     camera.rotation.order = 'YXZ';
-    // نقطة البداية: وسط الفصل باتجاه السبورة قليلًا
-    camera.position.set(0, this.eyeHeight, -2.2);
+    // نقطة البداية: جالس على كرسي خلف طاولة دراسية (الصف الخلفي، عمود أيمن)
+    // الكرسي عند (2.05, 2.15) — خارج صندوق تصادم الطاولة، والنظر نحو السبورة
+    camera.position.set(2.05, this.eyeHeight, 2.15);
     this.applyRotation();
 
     window.addEventListener('keydown', (e) => { this.keys[e.code] = true; });

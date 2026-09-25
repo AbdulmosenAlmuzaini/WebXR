@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { layoutArrows } from './scene.js';
 
 const AUDIO_SRC = 'assets/audio/fire-alarm.mp3';
+const SUCCESS_SRC = 'assets/audio/success.mp3';
 
 export class Simulation {
   constructor({ sceneData, player, ui }) {
@@ -92,7 +93,9 @@ export class Simulation {
   }
 
   setAlarmVolume(v) {
-    if (this.audio && this.audioOk) {
+    // يُطبَّق دائمًا على عنصر الصوت (حتى لو لم يكتمل التحميل بعد)،
+    // حتى يعمل خفض الـ 50% عند الخمول حتى مع تأخر بدء التشغيل
+    if (this.audio) {
       try { this.audio.volume = v; } catch { /* ignore */ }
     }
     if (this.oscFallback) {
@@ -136,10 +139,61 @@ export class Simulation {
   evacuate() {
     if (this.state === 'done') return;
     this.state = 'done';
-    this.stopAlarmSound();
+    this.stopAlarmSound(); // إيقاف إنذار الحريق فورًا عند الوصول للباب
+    this.playSuccessSound(); // صوت نجاح هادئ مرة واحدة (بدون Loop)
     this.sceneData.arrowsGroup.visible = false;
     console.log('[sim] تم الإخلاء بنجاح');
     this.ui.showSuccess();
+  }
+
+  // --- صوت النجاح: ملف success.mp3 مرة واحدة، أو رنين WebAudio بسيط كبديل ---
+  playSuccessSound() {
+    try {
+      const a = new Audio(SUCCESS_SRC);
+      a.loop = false;
+      a.volume = 0.5; // هادئ وواضح وغير مزعج
+      a.addEventListener('error', () => {
+        console.warn(`[sim] Warning: ملف صوت النجاح غير موجود: ${SUCCESS_SRC} — استخدام رنين WebAudio بديل.`);
+        this.playSuccessChimeFallback();
+      });
+      a.play().then(() => {
+        console.log('[sim] يعمل صوت النجاح من ملف MP3');
+      }).catch(() => {
+        console.warn(`[sim] Warning: تعذّر تشغيل ${SUCCESS_SRC} تلقائيًا — استخدام رنين WebAudio بديل.`);
+        this.playSuccessChimeFallback();
+      });
+    } catch (err) {
+      console.warn(`[sim] Warning: تعذّر إنشاء صوت النجاح (${SUCCESS_SRC}):`, err);
+      this.playSuccessChimeFallback();
+    }
+  }
+
+  // بديل: رنين نجاح قصير (3 نغمات صاعدة) عبر WebAudio — مرة واحدة فقط
+  playSuccessChimeFallback() {
+    try {
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      if (!Ctx) return;
+      if (!this._actx) this._actx = new Ctx();
+      const ctx = this._actx;
+      if (ctx.state === 'suspended') ctx.resume();
+      const notes = [523.25, 659.25, 783.99]; // C5 - E5 - G5
+      notes.forEach((f, i) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        const t0 = ctx.currentTime + i * 0.18;
+        osc.type = 'sine';
+        osc.frequency.value = f;
+        gain.gain.setValueAtTime(0.0001, t0);
+        gain.gain.exponentialRampToValueAtTime(0.12, t0 + 0.03);
+        gain.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.5);
+        osc.connect(gain).connect(ctx.destination);
+        osc.start(t0);
+        osc.stop(t0 + 0.55);
+      });
+      console.log('[sim] يعمل رنين النجاح البديل (WebAudio)');
+    } catch (err) {
+      console.warn('[sim] Warning: تعذّر تشغيل رنين النجاح البديل:', err);
+    }
   }
 
   update(dt) {
