@@ -1,5 +1,11 @@
-import { defineConfig } from 'vite'
+import { defineConfig } from 'vite';
 
 export default defineConfig({
-  base: '/WebXR/',
-})
+  server: {
+    port: 5173,
+    open: false
+  },
+  // ملاحظة WebXR لاحقًا:
+  // - سنضيف VRButton من three/addons عند تفعيل الواقع الافتراضي
+  // - الإبقاء على renderer.xr.enabled = true حينها
+});
